@@ -1,16 +1,22 @@
 import tkinter as tk
 from tkinter import ttk
+import json
 
 class BudgetManager:
+    """Manages budget data including available funds, budgets, and expenditures."""
     def __init__(self, amount):
+        """Initialize BudgetManager with starting funds."""
         self.available = amount
         self.budgets = {}
         self.expenditure = {}
 
     def add_budget(self, name, amount):
+        """Add a new budget with the given name and amount."""
         name = name.lower()
         if name in self.budgets:
             raise ValueError("Budget exists")
+        if amount < 0:
+            raise ValueError("Amount cannot be negative")
         if amount > self.available:
             raise ValueError("Insufficient funds")
         self.budgets[name] = amount
@@ -19,9 +25,12 @@ class BudgetManager:
         return self.available
 
     def change_budget(self, name, new_amount):
+        """Change the amount of an existing budget."""
         name = name.lower()
         if name not in self.budgets:
             raise ValueError("Budget does not exist")
+        if new_amount < 0:
+            raise ValueError("Amount cannot be negative")
         old_amount = self.budgets[name]
         if new_amount > old_amount + self.available:
             raise ValueError("Insufficient funds")
@@ -30,15 +39,19 @@ class BudgetManager:
         return self.available
 
     def spend(self, name, amount):
+        """Record spending for a budget and return remaining amount."""
         name = name.lower()
         if name not in self.expenditure:
             raise ValueError("No such budget")
+        if amount < 0:
+            raise ValueError("Amount cannot be negative")
         self.expenditure[name].append(amount)
         budgeted = self.budgets[name]
         spent = sum(self.expenditure[name])
         return budgeted - spent
 
     def get_summary(self):
+        """Return a summary of all budgets as a list of tuples."""
         summary = []
         total_budgeted = 0
         total_spent = 0
@@ -55,6 +68,7 @@ class BudgetManager:
         return summary
 
     def print_summary(self):
+        """Print a formatted summary of all budgets to the console."""
         print("Budget            Budgeted      Spent  Remaining")
         print("--------------- ---------- ---------- ----------")
         total_budgeted = 0
@@ -74,11 +88,14 @@ class BudgetManager:
               f'{total_remaining:10.2f}')
 
 class BudgetApp:
+    """GUI application for managing budgets using tkinter."""
     def __init__(self, root):
+        """Initialize the BudgetApp GUI with a BudgetManager instance."""
         self.manager = BudgetManager(1000)
         self.root = root
         self.root.title("Budget Manager")
-        self.root.geometry("600x400")
+        self.root.geometry("800x600")  # Window size
+        self.root.resizable(False, False)  # Make window non-resizable
 
         # Create a style for Treeview
         style = ttk.Style()
@@ -114,6 +131,9 @@ class BudgetApp:
         self.btn_summary = ttk.Button(root, text="Show Summary", command=self.show_summary)
         self.btn_summary.pack(pady=5)
 
+        self.btn_clear = ttk.Button(root, text="Clear All", command=self.clear_all)
+        self.btn_clear.pack(pady=5)
+
         # Create Treeview widget
         self.tree = ttk.Treeview(
             root,
@@ -125,75 +145,140 @@ class BudgetApp:
         self.tree.heading("Budgeted", text="Budgeted")
         self.tree.heading("Spent", text="Spent")
         self.tree.heading("Remaining", text="Remaining")
-        self.tree.column("Budget Name", width=150, anchor="center")
-        self.tree.column("Budgeted", width=100, anchor="center")
-        self.tree.column("Spent", width=100, anchor="center")
-        self.tree.column("Remaining", width=100, anchor="center")
+        self.tree.column("Budget Name", width=200, anchor="center")  # Adjusted for window
+        self.tree.column("Budgeted", width=150, anchor="center")    # Adjusted for window
+        self.tree.column("Spent", width=150, anchor="center")       # Adjusted for window
+        self.tree.column("Remaining", width=150, anchor="center")   # Adjusted for window
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Error/success label
-        self.error_label = ttk.Label(root, text="", foreground="red")
+        self.error_label = ttk.Label(root, text="", wraplength=780)  # Adjusted for window
         self.error_label.pack(pady=5)
 
-        # Initialize table with sample data
+        # Load data from file
+        self.load_data()
+
+        # Initialize table with loaded data
         self.show_summary()
 
     def clear_placeholder(self, entry, placeholder):
+        """Clear placeholder text in an entry field when focused."""
         if entry.get() == placeholder:
             entry.delete(0, tk.END)
 
     def restore_placeholder(self, entry, placeholder):
+        """Restore placeholder text in an entry field if empty."""
         if not entry.get():
             entry.insert(0, placeholder)
 
+    def show_message(self, message, color="red"):
+        """Display a message in the error label and clear it after 3 seconds."""
+        self.error_label.config(text=message, foreground=color)
+        self.root.after(3000, lambda: self.error_label.config(text=""))
+
+    def save_data(self):
+        """Save budget data to budgets.json."""
+        try:
+            with open("budgets.json", "w") as f:
+                json.dump({
+                    "available": self.manager.available,
+                    "budgets": self.manager.budgets,
+                    "expenditure": self.manager.expenditure
+                }, f, indent=2)
+        except Exception as e:
+            self.show_message(f"Error saving data: {e}")
+
+    def load_data(self):
+        """Load budget data from budgets.json if it exists."""
+        try:
+            with open("budgets.json", "r") as f:
+                data = json.load(f)
+                self.manager.available = float(data.get("available", 1000))
+                self.manager.budgets = {k: float(v) for k, v in data.get("budgets", {}).items()}
+                self.manager.expenditure = {k: [float(x) for x in v] for k, v in data.get("expenditure", {}).items()}
+                self.label_amount.config(text=f"Available Funds: ${self.manager.available:.2f}")
+        except FileNotFoundError:
+            pass  # File doesn't exist, use default initialization
+        except Exception as e:
+            self.show_message(f"Error loading data: {e}")
+
+    def clear_all(self):
+        """Reset all budget data and save the cleared state."""
+        self.manager.available = 1000
+        self.manager.budgets = {}
+        self.manager.expenditure = {}
+        self.label_amount.config(text=f"Available Funds: ${self.manager.available:.2f}")
+        self.save_data()
+        self.show_message("All budgets cleared.", color="green")
+        self.show_summary()
+
     def add_budget(self):
+        """Add a new budget via the GUI and save data."""
         try:
             name = self.entry_budget.get().lower()
-            if name == "budget name":
+            if name == "budget name" or not name.strip():
                 raise ValueError("Enter a valid budget name")
             amount = self.entry_amount.get()
-            if amount == "Amount":
+            if amount == "Amount" or not amount.strip():
                 raise ValueError("Enter a valid amount")
             amount = float(amount)
             remaining = self.manager.add_budget(name, amount)
             self.label_amount.config(text=f"Available Funds: ${remaining:.2f}")
-            self.error_label.config(text=f"Budget '{name}' added.")
+            self.entry_budget.delete(0, tk.END)
+            self.entry_amount.delete(0, tk.END)
+            self.restore_placeholder(self.entry_budget, "Budget Name")
+            self.restore_placeholder(self.entry_amount, "Amount")
+            self.save_data()
+            self.show_message(f"Budget '{name}' added.", color="green")
             self.show_summary()
         except ValueError as e:
-            self.error_label.config(text=f"Error: {e}")
+            self.show_message(f"Error: {e}")
 
     def change_budget(self):
+        """Change an existing budget's amount via the GUI and save data."""
         try:
             name = self.entry_budget.get().lower()
-            if name == "budget name":
+            if name == "budget name" or not name.strip():
                 raise ValueError("Enter a valid budget name")
             amount = self.entry_amount.get()
-            if amount == "Amount":
+            if amount == "Amount" or not amount.strip():
                 raise ValueError("Enter a valid amount")
             amount = float(amount)
             remaining = self.manager.change_budget(name, amount)
             self.label_amount.config(text=f"Available Funds: ${remaining:.2f}")
-            self.error_label.config(text=f"Budget '{name}' changed to ${amount:.2f}.")
+            self.entry_budget.delete(0, tk.END)
+            self.entry_amount.delete(0, tk.END)
+            self.restore_placeholder(self.entry_budget, "Budget Name")
+            self.restore_placeholder(self.entry_amount, "Amount")
+            self.save_data()
+            self.show_message(f"Budget '{name}' changed to ${amount:.2f}.", color="green")
             self.show_summary()
         except ValueError as e:
-            self.error_label.config(text=f"Error: {e}")
+            self.show_message(f"Error: {e}")
 
     def spend(self):
+        """Record spending for a budget via the GUI and save data."""
         try:
             name = self.entry_budget.get().lower()
-            if name == "budget name":
+            if name == "budget name" or not name.strip():
                 raise ValueError("Enter a valid budget name")
             amount = self.entry_amount.get()
-            if amount == "Amount":
+            if amount == "Amount" or not amount.strip():
                 raise ValueError("Enter a valid amount")
             amount = float(amount)
             remaining = self.manager.spend(name, amount)
-            self.error_label.config(text=f"Spent ${amount:.2f} on '{name}'.")
+            self.entry_budget.delete(0, tk.END)
+            self.entry_amount.delete(0, tk.END)
+            self.restore_placeholder(self.entry_budget, "Budget Name")
+            self.restore_placeholder(self.entry_amount, "Amount")
+            self.save_data()
+            self.show_message(f"Spent ${amount:.2f} on '{name}'.", color="green")
             self.show_summary()
         except ValueError as e:
-            self.error_label.config(text=f"Error: {e}")
+            self.show_message(f"Error: {e}")
 
     def show_summary(self):
+        """Update the Treeview with the current budget summary."""
         # Clear existing rows
         for item in self.tree.get_children():
             self.tree.delete(item)
