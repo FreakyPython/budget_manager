@@ -139,5 +139,3 @@ Submit pull requests or open issues for bugs, improvements, or feature requests.
 MIT License
 
 ---
-
-This version is more concise, organized, and easier to read while retaining all essential information. Let me know if you need further refinements or specific sections expanded!
